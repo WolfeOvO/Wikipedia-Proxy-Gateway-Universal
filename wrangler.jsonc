@@ -1,0 +1,14 @@
+{
+  // 部署前把 <YOUR_DOMAIN> 全部替换成你自己的域名（两处：routes 与 vars）
+  // name 也可改成你喜欢的 Worker 名称
+  "name": "wiki-proxy-gateway",
+  "main": "worker.js",
+  "compatibility_date": "2025-09-01",
+  "routes": [
+    { "pattern": "<YOUR_DOMAIN>", "custom_domain": true }
+  ],
+  "vars": {
+    "PUBLIC_HOST": "<YOUR_DOMAIN>"
+  },
+  "observability": { "enabled": true }
+}
