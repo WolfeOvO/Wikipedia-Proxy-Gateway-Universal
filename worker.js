@@ -25,7 +25,7 @@ const PROXY_PREFIX = '/proxy/';
 const LEGACY_PREFIX = '/__proxy__/'; // 兼容上游旧链接
 const PING_PATH = '/__wiki_proxy_ping';
 
-let PUBLIC_HOST = 'wikipedia.wolfe.cc.cd';
+let PUBLIC_HOST = 'wikimirror.wolfe.cc.cd';
 
 // 维基媒体旗下全部站点后缀（所有语言版本 + 全部姊妹项目）
 const WIKI_SUFFIXES = [
@@ -49,7 +49,7 @@ const HOST_FAILURE_TTL = 60 * 10;
 
 export default {
   async fetch(request, env, ctx) {
-    PUBLIC_HOST = (env && env.PUBLIC_HOST) || 'wikipedia.wolfe.cc.cd';
+    PUBLIC_HOST = (env && env.PUBLIC_HOST) || 'wikimirror.wolfe.cc.cd';
     try {
       if (!ALLOWED_METHODS.has(request.method)) {
         return new Response('Method Not Allowed', { status: 405 });
