@@ -43,9 +43,7 @@ const TTL_ASSET_LONG = 60 * 60 * 24 * 30; // 图片/字体/媒体长缓存 30 �
 
 const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST', 'OPTIONS']);
 
-// 上游 5xx 时的快速失败缓存（秒）
-const hostFailureMap = new Map();
-const HOST_FAILURE_TTL = 60 * 10;
+
 
 export default {
   async fetch(request, env, ctx) {
@@ -92,10 +90,6 @@ export default {
 /* -------------------- 核心代理处理 -------------------- */
 
 async function handleProxied(request, url, host, subPath, ctx) {
-  if (isHostRecentlyFailed(host)) {
-    return errorPage('上游站点 ' + host + ' 刚刚返回错误，请稍后再试。');
-  }
-
   const cache = caches.default;
   const isGet = request.method === 'GET';
   const likelyAsset = isLikelyAsset(subPath);
@@ -134,15 +128,12 @@ async function handleProxied(request, url, host, subPath, ctx) {
       cf: { cacheTtl: likelyAsset ? TTL_ASSET_LONG : TTL_ASSET_SHORT, cacheEverything: true },
     });
   } catch (err) {
-    markHostFailure(host);
     try {
       fetched = await fetch(target); // 兜底：不带转发头直连
     } catch (err2) {
-      markHostFailure(host);
       return errorPage('无法连接上游 ' + host + '：' + (err2.message || String(err2)));
     }
   }
-  if (fetched.status >= 500) markHostFailure(host);
 
   const contentType = (fetched.headers.get('content-type') || '').toLowerCase();
 
@@ -425,15 +416,6 @@ async function eventualCachePut(cache, key, value) {
   } catch (e) { /* 缓存失败不影响响应 */ }
 }
 
-function isHostRecentlyFailed(host) {
-  const t = hostFailureMap.get(host);
-  return typeof t === 'number' && (Date.now() / 1000) - t < HOST_FAILURE_TTL;
-}
-
-function markHostFailure(host) {
-  hostFailureMap.set(host, Date.now() / 1000);
-}
-
 /* -------------------- 错误 / 提示页 -------------------- */
 
 function escapeHtml(s) {
@@ -449,9 +431,13 @@ function pageShell(title, body) {
 
 function errorPage(message) {
   return new Response(pageShell('维基代理网关暂时不可用',
-    '<h1>维基代理网关暂时不可用</h1><p>' + escapeHtml(message) + '</p>'), {
+    '<h1>维基代理网关暂时不可用</h1><p>' + escapeHtml(message) + '</p>' +
+    '<p><a href="javascript:location.reload()">点击重试</a>（多为瞬时网络抖动，重试即可恢复）</p>'), {
     status: 502,
-    headers: { 'content-type': 'text/html; charset=utf-8' },
+    headers: {
+      'content-type': 'text/html; charset=utf-8',
+      'cache-control': 'no-store, must-revalidate',
+    },
   });
 }
 
