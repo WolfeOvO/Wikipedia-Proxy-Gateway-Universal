@@ -104,9 +104,18 @@ async function handleProxied(request, url, host, subPath, ctx) {
    * 因此这里把 desktop/mobile 分类结果编进 HTML 缓存键，并对响应声明 Vary。 */
   const ua = request.headers.get('user-agent') || '';
   const cookie = request.headers.get('cookie') || '';
-  const forced = cookie.match(/(?:^|;\s*)useformat=(desktop|mobile)/);
+  // 上游种 useformat cookie 的域是 .wikipedia.org，在我们域名下种不进浏览器；
+  // 因此 URL 参数 ?useformat= 也参与判定（移动版页面里的 桌面版视图 链接自带该参数）
+  const queryForced = url.searchParams.get('useformat');
+  let forced = null;
+  if (queryForced === 'desktop' || queryForced === 'mobile') {
+    forced = queryForced;
+  } else {
+    const um = cookie.match(/(?:^|;\s*)useformat=(desktop|mobile)/);
+    if (um) forced = um[1];
+  }
   const isMobileUA = /android|iphone|ipod|blackberry|iemobile|opera m(?:obi|ini)|windows phone|mobile safari|kindle|silk|midp|micromessenger|wechat|crios/i.test(ua);
-  const variant = forced ? forced[1] : (isMobileUA ? 'mobile' : 'desktop');
+  const variant = forced || (isMobileUA ? 'mobile' : 'desktop');
   // 除 useformat（只影响桌面/移动版本，已编入缓存键）外还有别的 cookie（如登录态）时绝不共享缓存
   const hasSessionCookie = cookie.split(';').map(c => c.trim()).filter(Boolean)
     .some(c => !/^useformat=(desktop|mobile)$/.test(c));
