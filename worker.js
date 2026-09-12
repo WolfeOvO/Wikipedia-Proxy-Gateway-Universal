@@ -135,6 +135,9 @@ async function handleProxied(request, url, host, subPath, ctx) {
     headers: upstreamHeaders,
     body: request.method === 'GET' || request.method === 'HEAD' ? null : request.body,
     redirect: 'follow',
+    // HTML 一律绕过 CF 边缘缓存拉取（cache:'no-store'）：旧版本曾在 CF 缓存层存下
+    // 最多 12 小时的"URL 唯一键"HTML（可能是移动版），no-store 立即穿透这些残留条目
+    cache: likelyAsset ? undefined : 'no-store',
   });
 
   let fetched;
@@ -180,13 +183,10 @@ async function handleProxied(request, url, host, subPath, ctx) {
     const rewritten = rewriter.transform(fetched);
     const h = stripProblematicHeaders(fetched.headers);
     h.delete('content-length');
-    // 桌面/移动两版内容共用同一 URL：声明 Vary 让下游（CF 边缘、浏览器）也按 UA 区分缓存
+    // 桌面/移动两版内容共用同一 URL，而 CF 边缘缓存不按 Vary 区分：
+    // HTML 一律标 private 禁止 CF 边缘缓存，只走 Worker 自己的 caches.default（缓存键含 UA 版本）。
     h.set('Vary', 'User-Agent, Cookie');
-    if (!anonymous) {
-      h.set('Cache-Control', 'private, no-store');
-    } else {
-      h.set('Cache-Control', 'public, max-age=' + TTL_HTML + ', must-revalidate');
-    }
+    h.set('Cache-Control', anonymous ? 'private, max-age=' + TTL_HTML : 'private, no-store');
 
     const resp = new Response(rewritten.body, {
       status: fetched.status,
