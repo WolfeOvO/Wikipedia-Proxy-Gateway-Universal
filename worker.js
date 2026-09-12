@@ -97,9 +97,24 @@ async function handleProxied(request, url, host, subPath, ctx) {
 
   const upstreamHeaders = prepareForwardHeaders(request.headers, host);
 
-  // HTML：按"我们这边的 URL"做边缘缓存（改写后的页面）
-  const htmlKey = new Request(request.url, { method: 'GET' });
-  if (isGet && !likelyAsset) {
+  /* ---- 桌面版/移动版判定 ----
+   * 上游根据 User-Agent 和 useformat cookie 决定给桌面版（Vector）还是移动版（Minerva）。
+   * 而 Cloudflare 缓存不按 User-Agent 区分（忽略 Vary: User-Agent），如果缓存键只用纯 URL，
+   * 谁先来谁的版本就被全站所有人拿到——这正是"电脑也显示移动端视图"的根因。
+   * 因此这里把 desktop/mobile 分类结果编进 HTML 缓存键，并对响应声明 Vary。 */
+  const ua = request.headers.get('user-agent') || '';
+  const cookie = request.headers.get('cookie') || '';
+  const forced = cookie.match(/(?:^|;\s*)useformat=(desktop|mobile)/);
+  const isMobileUA = /android|iphone|ipod|blackberry|iemobile|opera m(?:obi|ini)|windows phone|mobile safari|kindle|silk|midp|micromessenger|wechat|crios/i.test(ua);
+  const variant = forced ? forced[1] : (isMobileUA ? 'mobile' : 'desktop');
+  // 除 useformat（只影响桌面/移动版本，已编入缓存键）外还有别的 cookie（如登录态）时绝不共享缓存
+  const hasSessionCookie = cookie.split(';').map(c => c.trim()).filter(Boolean)
+    .some(c => !/^useformat=(desktop|mobile)$/.test(c));
+  const anonymous = !hasSessionCookie;
+
+  // HTML：按"我们这边的 URL + UA 版本"做边缘缓存（仅匿名用户；登录用户完全不缓存）
+  const htmlKey = new Request(request.url + (request.url.includes('?') ? '&' : '?') + '__uav=' + variant, { method: 'GET' });
+  if (isGet && !likelyAsset && anonymous) {
     try {
       const hit = await cache.match(htmlKey);
       if (hit) return hit;
@@ -124,9 +139,12 @@ async function handleProxied(request, url, host, subPath, ctx) {
 
   let fetched;
   try {
-    fetched = await fetch(upstreamReq, {
-      cf: { cacheTtl: likelyAsset ? TTL_ASSET_LONG : TTL_ASSET_SHORT, cacheEverything: true },
-    });
+    // 关键：CF 源缓存层（cf.cacheEverything）只按 URL 作键、忽略 UA/Cookie。
+    // 若 HTML 也走它，手机用户先到就会把移动版缓存 12h 喂给所有人（"电脑也是移动端"的另一半根因）。
+    // 因此仅静态资源启用 cf 源缓存；HTML 只走 Worker 自己的 caches.default（键含 UA 版本）。
+    fetched = await fetch(upstreamReq, likelyAsset ? {
+      cf: { cacheTtl: TTL_ASSET_LONG, cacheEverything: true },
+    } : undefined);
   } catch (err) {
     try {
       fetched = await fetch(target); // 兜底：不带转发头直连
@@ -162,15 +180,21 @@ async function handleProxied(request, url, host, subPath, ctx) {
     const rewritten = rewriter.transform(fetched);
     const h = stripProblematicHeaders(fetched.headers);
     h.delete('content-length');
-    h.set('Cache-Control', 'public, max-age=' + TTL_HTML);
+    // 桌面/移动两版内容共用同一 URL：声明 Vary 让下游（CF 边缘、浏览器）也按 UA 区分缓存
+    h.set('Vary', 'User-Agent, Cookie');
+    if (!anonymous) {
+      h.set('Cache-Control', 'private, no-store');
+    } else {
+      h.set('Cache-Control', 'public, max-age=' + TTL_HTML + ', must-revalidate');
+    }
 
     const resp = new Response(rewritten.body, {
       status: fetched.status,
       statusText: fetched.statusText,
       headers: h,
     });
-    resp.headers.set('X-Wiki-Gateway', 'html-rewritten; host=' + host);
-    if (isGet && fetched.status === 200) {
+    resp.headers.set('X-Wiki-Gateway', 'html-rewritten; host=' + host + '; variant=' + variant);
+    if (isGet && fetched.status === 200 && anonymous) {
       ctx.waitUntil(eventualCachePut(cache, htmlKey, resp.clone()));
     }
     return resp;
