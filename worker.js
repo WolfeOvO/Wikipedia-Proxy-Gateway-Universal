@@ -25,7 +25,7 @@ const PROXY_PREFIX = '/proxy/';
 const LEGACY_PREFIX = '/__proxy__/'; // 兼容上游旧链接
 const PING_PATH = '/__wiki_proxy_ping';
 
-let PUBLIC_HOST = 'wikimirror.wolfe.cc.cd';
+let PUBLIC_HOST = 'your-worker-domain.example.com';
 
 // 维基媒体旗下全部站点后缀（所有语言版本 + 全部姊妹项目）
 const WIKI_SUFFIXES = [
@@ -47,7 +47,7 @@ const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST', 'OPTIONS']);
 
 export default {
   async fetch(request, env, ctx) {
-    PUBLIC_HOST = (env && env.PUBLIC_HOST) || 'wikimirror.wolfe.cc.cd';
+    PUBLIC_HOST = (env && env.PUBLIC_HOST) || 'your-worker-domain.example.com';
     try {
       if (!ALLOWED_METHODS.has(request.method)) {
         return new Response('Method Not Allowed', { status: 405 });
