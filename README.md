@@ -4,10 +4,6 @@
 
 在 [zyhgov/Wikipedia-Proxy-Gateway](https://github.com/zyhgov/Wikipedia-Proxy-Gateway)（MIT，作者杖雍皓）基础上改造，支持**全部语言版本的维基百科 + 全部维基媒体姊妹项目**的站内连续浏览。
 
-> 在线实例：https://wikimirror.wolfe.cc.cd/
->
-> 直接访问 https://wikimirror.wolfe.cc.cd/wiki/_entry 或任何词条即可开始。右上角语言列表可切换到任意语言版本，站内点击不会"掉回"其他语言。
-
 ## 相对上游的改动
 
 | # | 上游行为 | 本版行为 |
